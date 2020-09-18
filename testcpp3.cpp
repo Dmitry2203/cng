@@ -1,7 +1,4 @@
-﻿// testcpp3.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
-//
-
-#include <windows.h>
+﻿#include <windows.h>
 #include <bcrypt.h>
 #include <iostream>
 #include <string>
@@ -87,17 +84,18 @@ void CryptoProviderCNG::Init(void)
       throw runtime_error(str.str());
     }
         
+    // Генеруруем ключ "на месте".
     vector<BYTE> rgbAES128Key(16);
     generate(rgbAES128Key.begin(), rgbAES128Key.end(), [n = 0]() mutable { return n += 3; });
 
     vKeyObject.resize(cbKeyObject);
 
-    if (!NT_SUCCESS(status = BCryptGenerateSymmetricKey(_hAESAlg, &_hKey, vKeyObject.data(), cbKeyObject, rgbAES128Key.data(), rgbAES128Key.size(), 0))) {
+    if (!NT_SUCCESS(status = BCryptGenerateSymmetricKey(_hAESAlg, &_hKey, vKeyObject.data(), cbKeyObject, rgbAES128Key.data(), static_cast<ULONG>(rgbAES128Key.size()), 0))) {
       str << "BCryptGenerateSymmetricKey error code: " << status;
       throw runtime_error(str.str());
     }
 	}
-	catch (std::exception& ex)
+	catch (exception& ex)
 	{
     stringstream str;
 		str << "CryptoProviderCNG::Init: " << ex.what() << "!" << endl;
@@ -135,7 +133,7 @@ vector<BYTE> CryptoProviderCNG::Crypt(const vector<BYTE>& data, bool bEncrypt) c
       if (bEncrypt)
       {
         DWORD cbCipherText = 0;
-        if (!NT_SUCCESS(status = BCryptEncrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, nullptr, 0, &cbCipherText, BCRYPT_BLOCK_PADDING)))
+        if (!NT_SUCCESS(status = BCryptEncrypt(_hKey, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), nullptr, nullptr, 0, nullptr, 0, &cbCipherText, BCRYPT_BLOCK_PADDING)))
         {
           str << "BCryptEncrypt 1 error code: " << status;
           throw runtime_error(str.str());
@@ -143,20 +141,20 @@ vector<BYTE> CryptoProviderCNG::Crypt(const vector<BYTE>& data, bool bEncrypt) c
 
         vResult.resize(cbCipherText);
 
-        if (!NT_SUCCESS(status = BCryptEncrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, vResult.data(), cbCipherText, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
+        if (!NT_SUCCESS(status = BCryptEncrypt(_hKey, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), nullptr, nullptr, 0, vResult.data(), cbCipherText, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
           str << "BCryptEncrypt 2 error code: " << status;
           throw runtime_error(str.str());
         }
       }
       else
       {
-        if (!NT_SUCCESS(status = BCryptDecrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, nullptr, 0, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
+        if (!NT_SUCCESS(status = BCryptDecrypt(_hKey, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), nullptr, nullptr, 0, nullptr, 0, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
           str << "BCryptDecrypt 1 error code: " << status;
           throw runtime_error(str.str());
         }
 
         vResult.resize(cbCipherText);
-        if (!NT_SUCCESS(status = BCryptDecrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, vResult.data(), cbCipherText, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
+        if (!NT_SUCCESS(status = BCryptDecrypt(_hKey, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), nullptr, nullptr, 0, vResult.data(), cbCipherText, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
           str << "BCryptDecrypt 2 error code: " << status;
           throw runtime_error(str.str());
         }
@@ -166,7 +164,7 @@ vector<BYTE> CryptoProviderCNG::Crypt(const vector<BYTE>& data, bool bEncrypt) c
     }
     catch (exception& ex)
     {
-      std::stringstream str;
+      stringstream str;
       str << "CryptoProviderCNG::Crypt: [" << ex.what() << "] " << "!" << endl;
       throw runtime_error(str.str());
     }
@@ -181,23 +179,23 @@ int main()
 {
   try
   {    
-    auto crypto_provider = std::make_shared<CryptoProviderCNG>();
+    auto crypto_provider = make_shared<CryptoProviderCNG>();
 
     condition_variable cv;
     mutex m;
-
     int start = 0;
 
     function<void(int, int)> func = [crypto_provider, &m, &cv, &start](int length, int sleepms) 
     {
-      std::this_thread::sleep_for(chrono::milliseconds(sleepms));
+      this_thread::sleep_for(chrono::milliseconds(sleepms));
 
-      std::unique_lock<std::mutex> l(m);
+      unique_lock<mutex> l(m);
       cv.wait(l, [&start] {return start == 1; });
       {        
         try
         {
           cout << "length: " << length << " sleep ms: " << sleepms;
+
           vector<BYTE> v(length);
           generate(v.begin(), v.end(), [n = 0]() mutable { return n++; });
 
@@ -218,7 +216,7 @@ int main()
     vector<thread> threads;
     for (int i = 0; i < 32; ++i) {
       static int length = 1024;
-      threads.push_back(std::thread(func, length += 512, rand() % 100));
+      threads.push_back(thread(func, length += 512, rand() % 100));
     }
 
     start = 1;
