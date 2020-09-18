@@ -98,12 +98,12 @@ void CryptoProviderCNG::Init(void)
   catch (exception& ex)
   {
     stringstream str;
-	  str << "CryptoProviderCNG::Init: " << ex.what() << "!" << endl;
-	  throw runtime_error(str.str());
+    str << "CryptoProviderCNG::Init: " << ex.what() << "!" << endl;
+    throw runtime_error(str.str());
   }
   catch (...)
   {
-	  throw runtime_error("CryptoProviderCNG::Init: Unknown error!");
+    throw runtime_error("CryptoProviderCNG::Init: Unknown error!");
   }
 }
 
