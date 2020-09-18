@@ -10,6 +10,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <algorithm>
+#include <functional>
+#include <chrono>
+#include <ctime>
 
 #pragma comment (lib, "bcrypt.lib")
 
@@ -19,12 +22,22 @@
 
 using std::string;
 using std::vector;
+using std::generate;
+
 using std::mutex;
-using std::stringstream;
-using std::runtime_error;
+using std::lock_guard;
+using std::thread;
+using std::function;
+using std::condition_variable;
+
 using std::exception;
+using std::runtime_error;
+
+using std::stringstream;
 using std::cout;
 using std::endl;
+
+using namespace std::chrono;
 
 // @brief Реализация механизма шифрования/расширования.
 class CryptoProviderCNG final
@@ -47,6 +60,7 @@ private:
   BCRYPT_ALG_HANDLE _hAESAlg{nullptr};
   BCRYPT_KEY_HANDLE _hKey{nullptr};
   vector<BYTE> vKeyObject;
+  mutable mutex _mtx;
 };
 
 CryptoProviderCNG::CryptoProviderCNG(void)
@@ -90,7 +104,7 @@ void CryptoProviderCNG::Init(void)
     }
         
     vector<BYTE> rgbAES128Key(16);
-    std::generate(rgbAES128Key.begin(), rgbAES128Key.end(), [n = 0]() mutable { return n += 3; });
+    generate(rgbAES128Key.begin(), rgbAES128Key.end(), [n = 0]() mutable { return n += 3; });
 
     vKeyObject.resize(cbKeyObject);
 
@@ -124,66 +138,110 @@ void CryptoProviderCNG::Uninit(void)
 
 vector<BYTE> CryptoProviderCNG::Crypt(const vector<BYTE>& data, bool bEncrypt) const
 {
-	try
-	{
-    NTSTATUS  status{0};
-    DWORD cbCipherText{0};
-
-    stringstream str;
-    vector<BYTE> vResult;
-
-    if (bEncrypt)
+  lock_guard<mutex> lock(_mtx);
+  {
+    try
     {
-      DWORD cbCipherText = 0;
-      if (!NT_SUCCESS(status = BCryptEncrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, nullptr, 0, &cbCipherText, BCRYPT_BLOCK_PADDING)))
+      NTSTATUS  status{ 0 };
+      DWORD cbCipherText{ 0 };
+
+      stringstream str;
+      vector<BYTE> vResult;
+
+      if (bEncrypt)
       {
-        str << "BCryptEncrypt 1 error code: " << status;
-        throw runtime_error(str.str());
-      }
+        DWORD cbCipherText = 0;
+        if (!NT_SUCCESS(status = BCryptEncrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, nullptr, 0, &cbCipherText, BCRYPT_BLOCK_PADDING)))
+        {
+          str << "BCryptEncrypt 1 error code: " << status;
+          throw runtime_error(str.str());
+        }
 
-      vResult.resize(cbCipherText);
+        vResult.resize(cbCipherText);
 
-      if (!NT_SUCCESS(status = BCryptEncrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, vResult.data(), cbCipherText, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
-        str << "BCryptEncrypt 2 error code: " << status;
-        throw runtime_error(str.str());
+        if (!NT_SUCCESS(status = BCryptEncrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, vResult.data(), cbCipherText, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
+          str << "BCryptEncrypt 2 error code: " << status;
+          throw runtime_error(str.str());
+        }
       }
+      else
+      {
+        if (!NT_SUCCESS(status = BCryptDecrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, nullptr, 0, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
+          str << "BCryptDecrypt 1 error code: " << status;
+          throw runtime_error(str.str());
+        }
+
+        vResult.resize(cbCipherText);
+        if (!NT_SUCCESS(status = BCryptDecrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, vResult.data(), cbCipherText, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
+          str << "BCryptDecrypt 2 error code: " << status;
+          throw runtime_error(str.str());
+        }
+        vResult.resize(cbCipherText);
+      }
+      return vResult;
     }
-    else
+    catch (exception& ex)
     {
-      if (!NT_SUCCESS(status = BCryptDecrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, nullptr, 0, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
-        str << "BCryptDecrypt 1 error code: " << status;
-        throw runtime_error(str.str());
-      }
-
-      vResult.resize(cbCipherText);
-      if (!NT_SUCCESS(status = BCryptDecrypt(_hKey, const_cast<PUCHAR>(data.data()), data.size(), nullptr, nullptr, 0, vResult.data(), cbCipherText, &cbCipherText, BCRYPT_BLOCK_PADDING))) {
-        str << "BCryptDecrypt 2 error code: " << status;
-        throw runtime_error(str.str());
-      }
-      vResult.resize(cbCipherText);
+      std::stringstream str;
+      str << "CryptoProviderCNG::Crypt: [" << ex.what() << "] " << "!" << endl;
+      throw runtime_error(str.str());
     }
-    return vResult;
+    catch (...)
+    {
+      throw runtime_error("CryptoProviderCNG::Crypt: Unknown error!");
+    }
   }
-	catch (exception& ex)
-	{
-		std::stringstream str; 
-    str << "CryptoProviderCNG::Crypt: [" << ex.what() << "] " << "!" << endl;
-		throw runtime_error(str.str());
-	}
-	catch (...)
-	{
-		throw runtime_error("CryptoProviderCNG::Crypt: Unknown error!");
-	}
 }
 
 int main()
 {
   try
   {    
-    vector<BYTE> v = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
     auto crypto_provider = std::make_shared<CryptoProviderCNG>();
-    auto crypted = crypto_provider->Crypt(v);
-    auto encrypted = crypto_provider->Crypt(crypted, false);
+
+    condition_variable cv;
+    mutex m;
+
+    int start = 0;
+
+    function<void(int)> func = [crypto_provider, &m, &cv, &start](int length) {
+      std::unique_lock<std::mutex> l(m);
+      cv.wait(l, [&start] {return start == 1; });
+      {        
+        try
+        {
+          cout << "Thread: " << length;
+          vector<BYTE> v(length);
+          generate(v.begin(), v.end(), [n = 0]() mutable { return n++; });
+
+          bool result{ false };
+          auto start = system_clock::now();
+          {
+            auto crypted = crypto_provider->Crypt(v);
+            auto encrypted = crypto_provider->Crypt(crypted, false);            
+            result = (v == encrypted);
+          }
+          auto end = system_clock::now();
+          cout << " ns: " << duration_cast<nanoseconds>(end - start).count()  << " result: " << result << endl;
+        }
+        catch (...) {};
+      }
+    };
+
+    vector<thread> threads;
+    for (int i = 0; i < 32; ++i) {
+      static int length = 0;
+      threads.push_back(std::thread(func, length += 512));
+    }
+
+    start = 1;
+    cv.notify_all();
+
+    for (auto& t : threads) {
+      if (t.joinable()) {
+        t.join();
+      }
+    }
   }
   catch (exception& ex)
   {
