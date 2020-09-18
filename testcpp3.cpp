@@ -20,23 +20,7 @@
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
 
-using std::string;
-using std::vector;
-using std::generate;
-
-using std::mutex;
-using std::lock_guard;
-using std::thread;
-using std::function;
-using std::condition_variable;
-
-using std::exception;
-using std::runtime_error;
-
-using std::stringstream;
-using std::cout;
-using std::endl;
-
+using namespace std;
 using namespace std::chrono;
 
 // @brief Реализация механизма шифрования/расширования.
@@ -204,13 +188,16 @@ int main()
 
     int start = 0;
 
-    function<void(int)> func = [crypto_provider, &m, &cv, &start](int length) {
+    function<void(int, int)> func = [crypto_provider, &m, &cv, &start](int length, int sleepms) 
+    {
+      std::this_thread::sleep_for(chrono::milliseconds(sleepms));
+
       std::unique_lock<std::mutex> l(m);
       cv.wait(l, [&start] {return start == 1; });
       {        
         try
         {
-          cout << "Thread: " << length;
+          cout << "length: " << length << " sleep ms: " << sleepms;
           vector<BYTE> v(length);
           generate(v.begin(), v.end(), [n = 0]() mutable { return n++; });
 
@@ -222,7 +209,7 @@ int main()
             result = (v == encrypted);
           }
           auto end = system_clock::now();
-          cout << " ns: " << duration_cast<nanoseconds>(end - start).count()  << " result: " << result << endl;
+          cout << " result: " << result << " ns: " << duration_cast<nanoseconds>(end - start).count() << endl;
         }
         catch (...) {};
       }
@@ -230,8 +217,8 @@ int main()
 
     vector<thread> threads;
     for (int i = 0; i < 32; ++i) {
-      static int length = 0;
-      threads.push_back(std::thread(func, length += 512));
+      static int length = 1024;
+      threads.push_back(std::thread(func, length += 512, rand() % 100));
     }
 
     start = 1;
