@@ -27,7 +27,7 @@ using std::cout;
 using std::endl;
 
 // @brief Реализация механизма шифрования/расширования.
-class CryptoProviderCNG 
+class CryptoProviderCNG final
 {
 public:
   virtual ~CryptoProviderCNG();
@@ -160,6 +160,7 @@ vector<BYTE> CryptoProviderCNG::Crypt(const vector<BYTE>& data, bool bEncrypt) c
         str << "BCryptDecrypt 2 error code: " << status;
         throw runtime_error(str.str());
       }
+      vResult.resize(cbCipherText);
     }
     return vResult;
   }
