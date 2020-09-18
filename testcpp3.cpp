@@ -56,8 +56,8 @@ CryptoProviderCNG::~CryptoProviderCNG(void)
 
 void CryptoProviderCNG::Init(void)
 {
-	try
-	{
+  try
+  {
     NTSTATUS  status{ 0 };
     stringstream str;
 
@@ -94,17 +94,17 @@ void CryptoProviderCNG::Init(void)
       str << "BCryptGenerateSymmetricKey error code: " << status;
       throw runtime_error(str.str());
     }
-	}
-	catch (exception& ex)
-	{
+  }
+  catch (exception& ex)
+  {
     stringstream str;
-		str << "CryptoProviderCNG::Init: " << ex.what() << "!" << endl;
-		throw runtime_error(str.str());
-	}
-	catch (...)
-	{
-		throw runtime_error("CryptoProviderCNG::Init: Unknown error!");
-	}
+	  str << "CryptoProviderCNG::Init: " << ex.what() << "!" << endl;
+	  throw runtime_error(str.str());
+  }
+  catch (...)
+  {
+	  throw runtime_error("CryptoProviderCNG::Init: Unknown error!");
+  }
 }
 
 void CryptoProviderCNG::Uninit(void)
