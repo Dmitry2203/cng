@@ -21,7 +21,7 @@ using namespace std;
 using namespace std::chrono;
 
 // @brief Реализация механизма шифрования/расширования.
-class CryptoProviderCNG final
+class CryptoProviderCNG
 {
 public:
   virtual ~CryptoProviderCNG();
@@ -186,14 +186,13 @@ int main()
     int start = 0;
 
     function<void(int, int)> func = [crypto_provider, &m, &cv, &start](int length, int sleepms) 
-    {
-      this_thread::sleep_for(chrono::milliseconds(sleepms));
-
+    {      
       unique_lock<mutex> l(m);
       cv.wait(l, [&start] {return start == 1; });
       {        
         try
         {
+          this_thread::sleep_for(chrono::milliseconds(sleepms));
           cout << "length: " << length << " sleep ms: " << sleepms;
 
           vector<BYTE> v(length);
@@ -215,7 +214,7 @@ int main()
 
     vector<thread> threads;
     for (int i = 0; i < 32; ++i) {
-      static int length = 1024;
+      static int length = 512;
       threads.push_back(thread(func, length += 512, rand() % 100));
     }
 
