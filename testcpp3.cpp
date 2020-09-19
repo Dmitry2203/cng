@@ -132,6 +132,7 @@ vector<BYTE> CryptoProviderCNG::Crypt(const vector<BYTE>& data, bool bEncrypt) c
 
       if (bEncrypt)
       {
+        // Входные параметры апишных функций не помечены как const, применяем const_cast.
         DWORD cbCipherText = 0;
         if (!NT_SUCCESS(status = BCryptEncrypt(_hKey, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), nullptr, nullptr, 0, nullptr, 0, &cbCipherText, BCRYPT_BLOCK_PADDING)))
         {
